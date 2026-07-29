@@ -4,6 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 use serde_with::skip_serializing_none;
 
 use crate::model::IntOrStr;
+use crate::model::ContentLayout;
 
 /// qBittorrent and dependency version information.
 #[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq)]
@@ -28,6 +29,7 @@ pub struct ProcessInfo {
     pub launch_time: i64,
 }
 
+#[skip_serializing_none]
 #[cfg_attr(feature = "builder", derive(typed_builder::TypedBuilder))]
 #[cfg_attr(
     feature = "builder",
@@ -37,12 +39,16 @@ pub struct ProcessInfo {
 ///
 /// Optional fields allow callers to update only selected settings.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq)]
-#[skip_serializing_none]
 pub struct Preferences {
     /// Currently selected language (e.g. en_GB for English)
     pub locale: Option<String>,
     /// True if a subfolder should be created when adding a torrent
+    ///
+    /// Deprecated in modern qBittorrent versions; use
+    /// [`torrent_content_layout`](Self::torrent_content_layout) instead.
     pub create_subfolder_enabled: Option<bool>,
+    /// Default torrent content layout for added torrents
+    pub torrent_content_layout: Option<ContentLayout>,
     /// True if torrents should be added in a Paused state
     pub start_paused_enabled: Option<bool>,
     /// TODO
@@ -464,4 +470,33 @@ pub struct SetCookieArg {
     pub value: Option<String>,
     /// Cookie expiration date (seconds since epoch)
     pub expiration_date: Option<i64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preferences_skips_none_fields() {
+        let prefs = Preferences {
+            save_path: Some("/data/torrents".to_string()),
+            auto_tmm_enabled: Some(true),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&prefs).unwrap();
+        assert!(json.contains("save_path"));
+        assert!(json.contains("auto_tmm_enabled"));
+        assert!(!json.contains("null"), "None fields should be skipped, got: {json}");
+    }
+
+    #[test]
+    fn preferences_serializes_torrent_content_layout() {
+        let prefs = Preferences {
+            torrent_content_layout: Some(ContentLayout::Subfolder),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&prefs).unwrap();
+        assert!(json.contains("\"torrent_content_layout\":\"Subfolder\""));
+        assert!(!json.contains("create_subfolder_enabled"));
+    }
 }
